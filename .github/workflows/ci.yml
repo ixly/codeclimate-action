@@ -1,32 +1,51 @@
-name: "PR Checks"
+name: "PR checks"
 on: [pull_request, push]
 
 jobs:
   check_pr:
+    name: "PR checks"
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - name: checkout code
+      uses: actions/checkout@v3
 
-    - name: "npm ci"
+    - name: setup node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+        cache: 'npm'
+
+    - name: install dependencies
       run: npm ci
 
-    - name: "npm run build"
-      run: npm run build
+    - name: check lock file for untrusted packages
+      run: npm_config_yes=true npx lockfile-lint --path package-lock.json --allowed-hosts npm --validate-https
 
-    - name: "npm run test"
-      run: npm run test
+    - name: build typescript
+      run: npm run build -- --noEmit
 
-    - name: "check for unformatted sources"
+    - name: run tests and instrument coverage
+      run: npm run coverage
+
+    - name: check for unformatted sources
       run: |
         npm run format:check \
         || (echo "##[error] found unformatted files. please 'npm run format'" \
                  "and check in all changes" \
             && exit 1)
 
-    - name: "check for uncommitted changes"
+    - name: check for uncommitted changes
       # Ensure no changes, but ignore node_modules dir since dev/fresh ci deps installed.
       run: |
         git diff --exit-code --stat -- . ':!node_modules' \
         || (echo "##[error] found changed files after build. please 'npm run build'" \
                  "and check in all changes" \
             && exit 1)
+
+    - name: publish code coverage to code-climate (duh)
+      if: ${{ github.event_name == 'push' }}
+      uses: paambaati/codeclimate-action@v3.1.0
+      env:
+        CC_TEST_REPORTER_ID: 3470adaf12ff7cecdfe5a968ae0e95d098b6ee58c340114e1e90d440ee9e66ab
+      with:
+        debug: true
